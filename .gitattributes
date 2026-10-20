@@ -1,0 +1,4 @@
+# 跨平台一致性：仓库内一律 LF
+* text=auto eol=lf
+*.png binary
+*.jpg binary
