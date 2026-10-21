@@ -1,6 +1,8 @@
 # 登录态 = 账号本身，绝不可入库
 chrome-profile/
 *.profile/
+cookies.json
+*.cookies.json
 
 # 运行产物（截图常含真实姓名/班级/分数）
 *.png
