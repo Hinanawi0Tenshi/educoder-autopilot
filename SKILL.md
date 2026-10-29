@@ -14,7 +14,7 @@ description: 头歌（educoder）实验作业的自动驾驶方法论，含两�
 | 稳定性 | 高，只依赖签名密钥 | 中，依赖 DOM 与文案 |
 | 读图 | 下载原图后多模态读 | 截图读，可能被缩放 |
 | 浏览器 | 只在登录取 cookie 时开一次 | 全程需要 |
-| 适用 | 代码 + 评测型关卡 | 文件上传、选择题、图形化、接口改版 |
+| 适用 | 代码题、选择题与判断题 | 文件上传、复杂图形化、接口改版 |
 
 **先试接口**，接口不可用（签名密钥过期又一时取不到、平台改了接口）再退界面。
 两边拿到的判定信息是等价的：都是"通过 / 不通过 + 预期输出 vs 实际输出"。
@@ -29,8 +29,9 @@ description: 头歌（educoder）实验作业的自动驾驶方法论，含两�
 node scripts/get-cookies.js                 # 从带调试端口的 Chrome 取 cookie -> cookies.json
 node scripts/eduapi.js list  <任务URL>       # 全部关卡 + 通过状态
 node scripts/eduapi.js walk  <任务URL>       # 下一道未通过的题：正文 + 图片 + 现有框架
-node scripts/eduapi.js img   <任务URL> <目录> # 下载题面配图
-node scripts/eduapi.js submit <任务URL> <代码文件|->   # 提交并拿回 预期/实际 差异
+node scripts/eduapi.js img    <任务URL> <目录> # 下载题面配图
+node scripts/eduapi.js submit <任务URL> <代码文件|->   # 提交代码并拿回 预期/实际 差异
+node scripts/eduapi.js choose <任务URL> <答案1> [答案2 ...] # 提交选择题答案直接判分（如 BC C）
 ```
 
 `walk` 一条命令就把"下一道题该做什么"全给了，顺着 `next_game` 走，不需要点「下一关」。
