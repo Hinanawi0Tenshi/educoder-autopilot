@@ -3,7 +3,7 @@
 不开浏览器、不点按钮，只用 cookie + 一个签名头，直接把题读完、代码提交、结果拿回来。
 
 **这是首选模式**：比界面快一到两个数量级，也不受"冷启动吞点击""类名改版"影响。
-界面模式留给它做不了的事——需要看渲染图、文件上传、选择题、图形化关卡。
+界面模式留给它做不了的事——需要看渲染图、文件上传、复杂图形化关卡（选择题与代码题均已支持纯接口）。
 
 ---
 
@@ -84,18 +84,19 @@ const d = (s) => Buffer.from(Buffer.from(s, 'base64').toString(), 'base64').toSt
 
 ---
 
-## 3. 五个接口
+## 3. 六个核心接口
 
 URL 形如 `https://www.educoder.net/tasks/<course>/<homework_common_id>/<task_slug>`，
 下文 `{slug}` = 最后一段，`{hwid}` = 倒数第二段。
 
 | # | 方法与路径 | 作用 |
 |---|---|---|
-| 1 | `GET /api/tasks/{slug}.json?homework_common_id={hwid}` | 题目正文、图片、代码路径、`next_game`、当前分数 |
+| 1 | `GET /api/tasks/{slug}.json?homework_common_id={hwid}` | 题目正文、图片、代码路径、`chooses`、`next_game`、当前分数 |
 | 2 | `GET /api/tasks/{slug}/rep_content.json?path={path}&homework_common_id={hwid}&exercise_id=` | 编辑器里现有代码（base64） |
 | 3 | `POST /api/myshixuns/{myshixun_id}/update_file.json` | 保存代码，返回 `sec_key` / `resubmit` / `commitID` |
-| 4 | `POST /api/tasks/{slug}/game_build.json` | 触发评测 |
-| 5 | `GET /api/tasks/{slug}/game_status.json?resubmit=&sec_key=&challenge_id=&homework_common_id=` | 轮询结果 |
+| 4 | `POST /api/tasks/{slug}/game_build.json` | 触发代码评测 |
+| 5 | `GET /api/tasks/{slug}/game_status.json?resubmit=&sec_key=&challenge_id=&homework_common_id=` | 轮询代码评测结果 |
+| 6 | `POST /api/tasks/{slug}/choose_build.json` | 提交选择题/判断题直接判分（即时返回） |
 
 `zzud`（用户学号）这个 query 参数**不是必需的**，可以完全不带——少一处个人信息泄露面。
 
@@ -193,6 +194,41 @@ URL 形如 `https://www.educoder.net/tasks/<course>/<homework_common_id>/<task_s
 
 `output` / `actual_output` 就是「测评结果」面板左右两栏的内容，直接可做差异比对，
 不需要再截图读。
+
+### 接口 6：选择题评测（choose_build）
+
+对于理论关卡、选择题与判断题型（`task.json` 中带 `chooses` 且 `challenge.path` 为 `"null"`）：无需保存代码和轮询容器，直接调 `choose_build.json` 即时判分。
+
+#### 请求 Body：
+
+```jsonc
+{
+  "answer": ["BC", "C"],            // 每题答案字符串：单选如 "C"，多选如 "BC"，判断题如 "true"/"false"
+  "challenge_id": 5800381,          // t.challenge.id
+  "homework_common_id": "4291880",  // 课程作业 ID
+  "subject_id": ""                  // 默认传空字符串
+}
+```
+
+#### 选项字母对应关系：
+选项按 `challenge_question[i].position` 或下标映射：`0 -> A`, `1 -> B`, `2 -> C`, `3 -> D` 等；多选合并为字母串（如选中第 1、2 项为 `"BC"`）。
+
+#### 响应结果（即时响应，无需轮询）：
+
+```jsonc
+{
+  "game_original_status": 2,        // 2 代表本关通过
+  "grade": 114460,                  // 经验/总分
+  "gold": 20,                       // 获得金币
+  "experience": 20,                 // 获得经验
+  "had_all_submmit": true,
+  "test_sets": [
+    { "position": 1, "actual_output": "BC" },
+    { "position": 2, "actual_output": "C" }
+  ],
+  "next_game": "jbvsl6mizfyu"       // 下一关 slug
+}
+```
 
 ### 题面配图
 

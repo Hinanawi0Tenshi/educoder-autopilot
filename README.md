@@ -11,7 +11,7 @@
 | 稳定性 | 高，只依赖签名密钥 | 中，依赖 DOM 与文案 |
 | 读图 | 下载原图后多模态读 | 截图读 |
 | 浏览器 | 只在登录取 cookie 时开一次 | 全程需要 |
-| 适用 | 代码 + 评测型关卡 | 文件上传、选择题、图形化、接口改版 |
+| 适用 | 代码题、选择题与判断题 | 文件上传、复杂图形化、接口改版 |
 
 先试接口，接口不可用再退界面。两边拿到的判定信息等价：**通过 / 不通过 + 预期输出 vs 实际输出**。
 
@@ -60,7 +60,8 @@ node scripts/get-cookies.js            # -> cookies.json
 # 3. 纯命令行做题
 node scripts/eduapi.js list   <任务URL>              # 全部关卡 + 通过状态
 node scripts/eduapi.js walk   <任务URL>              # 下一道未通过的题：正文 + 图片 + 现有框架
-node scripts/eduapi.js submit <任务URL> answer.sql   # 提交并拿回 预期/实际 差异
+node scripts/eduapi.js submit <任务URL> answer.sql   # 提交代码并拿回 预期/实际 差异
+node scripts/eduapi.js choose <任务URL> BC C         # 提交选择题答案直接判分（多选/单选）
 ```
 
 `submit` 退出码：`0` 通过、`3` 未通过（附差异）、`1` 出错。
@@ -78,7 +79,7 @@ node scripts/eduapi.js submit <任务URL> answer.sql   # 提交并拿回 预期/
 | 文件 | 内容 |
 |---|---|
 | `SKILL.md` | 两种模式的取舍 + 主循环八步 + 差异对照表 + 纪律与反模式 |
-| `scripts/eduapi.js` | 接口客户端：`list` / `walk` / `submit` / `code` / `task` / `img` |
+| `scripts/eduapi.js` | 接口客户端：`list` / `walk` / `submit` / `choose` / `code` / `task` / `img` |
 | `scripts/get-cookies.js` | 从带调试端口的 Chrome 取 cookie |
 | `references/api.md` | 接口清单、签名算法、密钥失效后的重取步骤、字段与限制 |
 | `references/platform.md` | 头歌页面结构、文案表、Monaco 用法、判题语义（实测值，会随改版失效） |
@@ -95,7 +96,7 @@ node scripts/eduapi.js submit <任务URL> answer.sql   # 提交并拿回 预期/
 
 ## 适用范围与限制
 
-- 面向"代码编辑器 + 评测"型关卡。文件上传、选择题、图形化关卡走界面模式。
+- 面向代码题与选择题关卡。文件上传、复杂图形化关卡走界面模式。
 - **接口签名密钥硬编码在前端 bundle 里，平台发版可能变**；变了解析步骤见 `references/api.md`。
 - **每次提交都消耗一次评测配额**，课程可能设上限——想清楚再提交，别连点。
 - 文案表与 DOM 结构硬绑头歌当前版本，改版后需按 `references/pitfalls.md` 的 I 节找回来。

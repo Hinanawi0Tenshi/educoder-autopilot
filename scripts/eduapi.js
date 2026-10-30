@@ -8,6 +8,7 @@
  *   node eduapi.js task   <任务URL>           # 指定关卡的完整信息
  *   node eduapi.js img    <任务URL> [目录]     # 把题面配图下载到本地（读图用）
  *   node eduapi.js submit <任务URL> <代码文件|->   # 保存 -> 评测 -> 轮询 -> 打印预期/实际差异
+ *   node eduapi.js choose <任务URL> <答案1> [答案2 ...] # 提交选择题/判断题直接判分
  *
  * 环境变量：
  *   EDU_COOKIES   cookie 文件路径，默认 ./cookies.json
@@ -118,19 +119,23 @@ function parseTaskUrl(u) {
 /** 题面里的路径偶尔带全角标点，清掉 */
 const cleanPath = (p) => String(p).replace(/[，,；;\s]+$/, '').trim();
 
+const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'];
+
 async function fetchTask(url) {
   const { course, hwid, slug } = parseTaskUrl(url);
   const t = await api(`/api/tasks/${slug}.json?homework_common_id=${hwid}`);
   if (!t.challenge) throw new Error('任务响应异常: ' + JSON.stringify(t).slice(0, 300));
   const filePath = cleanPath(t.challenge.path);
   let code = '';
-  try {
-    const rep = await api(
-      `/api/tasks/${slug}/rep_content.json?path=${encodeURIComponent(filePath)}&homework_common_id=${hwid}&exercise_id=`
-    );
-    code = Buffer.from(rep.content.content, 'base64').toString('utf8');
-  } catch (e) {
-    code = `__读代码失败__ ${e.message}`;
+  if (filePath && filePath !== 'null') {
+    try {
+      const rep = await api(
+        `/api/tasks/${slug}/rep_content.json?path=${encodeURIComponent(filePath)}&homework_common_id=${hwid}&exercise_id=`
+      );
+      code = Buffer.from(rep.content.content, 'base64').toString('utf8');
+    } catch (e) {
+      code = `__读代码失败__ ${e.message}`;
+    }
   }
   const md = String(t.challenge.task_pass || '');
   const images = [...md.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)]
@@ -142,6 +147,19 @@ async function fetchTask(url) {
 
 function view(x) {
   const { t, slug, filePath, code, images } = x;
+  const chooses =
+    Array.isArray(t.chooses) && t.chooses.length > 0
+      ? t.chooses.map((c) => ({
+          position: c.position,
+          category: c.category === 1 ? '单选题' : c.category === 2 ? '多选题' : c.question_name || String(c.category),
+          subject: c.subject,
+          options: (c.challenge_question || []).map((o, idx) => ({
+            label: OPTION_LETTERS[idx] || String(idx),
+            option_name: o.option_name,
+          })),
+        }))
+      : undefined;
+
   return {
     slug,
     subject: t.challenge.subject,
@@ -155,6 +173,7 @@ function view(x) {
     is_last: t.is_last_game,
     task_markdown: t.challenge.task_pass,
     images,
+    ...(chooses ? { chooses } : {}),
     code,
   };
 }
@@ -273,6 +292,47 @@ async function submit(taskUrl, codeText) {
   };
 }
 
+/** 提交选择题答案并直接评测（POST /api/tasks/{slug}/choose_build.json） */
+async function submitChooses(taskUrl, answers) {
+  const { hwid, slug } = parseTaskUrl(taskUrl);
+  const t = await api(`/api/tasks/${slug}.json?homework_common_id=${hwid}`);
+  if (!t.challenge) throw new Error('任务响应异常: ' + JSON.stringify(t).slice(0, 300));
+
+  let formattedAnswers = [];
+  if (answers.length === 1 && (answers[0].startsWith('[') || answers[0].startsWith('{'))) {
+    try {
+      const parsed = JSON.parse(answers[0]);
+      formattedAnswers = Array.isArray(parsed) ? parsed : Object.values(parsed);
+    } catch {
+      formattedAnswers = answers;
+    }
+  } else {
+    formattedAnswers = answers;
+  }
+
+  const res = await api(`/api/tasks/${slug}/choose_build.json`, {
+    body: {
+      answer: formattedAnswers,
+      challenge_id: t.challenge.id,
+      subject_id: '',
+      homework_common_id: hwid,
+    },
+  });
+
+  const passed = res.game_original_status === 2 || res.gold > 0 || res.experience > 0;
+  return {
+    ok: passed,
+    status: res.game_original_status,
+    score: t.challenge.score,
+    grade: res.grade,
+    gold: res.gold,
+    experience: res.experience,
+    challenge_chooses_count: res.challenge_chooses_count,
+    test_sets: res.test_sets,
+    next_game: res.next_game,
+  };
+}
+
 /** 下载题面配图（带 cookie，附件需要登录态） */
 async function downloadImages(taskUrl, outDir) {
   const x = await fetchTask(taskUrl);
@@ -298,7 +358,7 @@ async function downloadImages(taskUrl, outDir) {
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
-  const usage = `usage: node eduapi.js <list|walk|task|code|img|next|submit> <任务URL> [参数]`;
+  const usage = `usage: node eduapi.js <list|walk|task|code|img|next|submit|choose> <任务URL> [参数]`;
 
   if (cmd === 'list') {
     const rows = await listLevels(rest[0]);
@@ -324,6 +384,15 @@ async function main() {
     if (!src) return console.error(usage);
     const codeText = src === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(src, 'utf8');
     const r = await submit(rest[0], codeText);
+    console.log(JSON.stringify(r, null, 1));
+    process.exit(r.ok ? 0 : 3);
+  } else if (cmd === 'choose') {
+    const answers = rest.slice(1);
+    if (answers.length === 0) {
+      console.error(`usage: node eduapi.js choose <任务URL> <答案1> [答案2 ...]`);
+      process.exit(2);
+    }
+    const r = await submitChooses(rest[0], answers);
     console.log(JSON.stringify(r, null, 1));
     process.exit(r.ok ? 0 : 3);
   } else {
