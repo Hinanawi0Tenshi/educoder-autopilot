@@ -86,6 +86,10 @@ const d = (s) => Buffer.from(Buffer.from(s, 'base64').toString(), 'base64').toSt
 
 ## 3. 六个核心接口
 
+> 不知道自己该做哪个作业？课程 / 作业列表那几个发现类接口在 `discover.md`：
+> `/api/users/{login}/courses.json`、`/api/courses/{id}.json`、
+> `/api/courses/{id}/homework_commons.json`、`/api/shixuns/{id}/shixun_exec.json`。
+
 URL 形如 `https://www.educoder.net/tasks/<course>/<homework_common_id>/<task_slug>`，
 下文 `{slug}` = 最后一段，`{hwid}` = 倒数第二段。
 

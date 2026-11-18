@@ -19,105 +19,13 @@
  */
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
-const BASE = 'https://data.educoder.net';
-const WWW = 'https://www.educoder.net';
-const COOKIE_FILE = process.env.EDU_COOKIES || path.join(__dirname, 'cookies.json');
+// 底层客户端（cookie / 签名 / 请求）与 discover.js 共用，AK/SK 只在 edunet.js 维护
+const {
+  BASE, WWW, sleep, cookieHeader, api, parseTaskUrl, cleanPath,
+} = require('./edunet');
+
 const TIMEOUT = Number(process.env.EDU_TIMEOUT || 120);
-
-// 前端 umi bundle 里的签名密钥（getKey = atob(atob(x))）。
-// 换版本失效时按 references/api.md「密钥重新提取」一节重取。
-const AK = 'e9dd5b4322f9f7d83d009de9bfa100c3';
-const SK = '2e3da06ae26ba9f76a5d8d355746f2fe';
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const md5 = (s) => crypto.createHash('md5').update(s).digest('hex');
-
-function cookieMap() {
-  if (process.env.EDU_COOKIE) {
-    const o = {};
-    for (const part of process.env.EDU_COOKIE.split(';')) {
-      const i = part.indexOf('=');
-      if (i > 0) o[part.slice(0, i).trim()] = part.slice(i + 1).trim();
-    }
-    return o;
-  }
-  if (!fs.existsSync(COOKIE_FILE)) {
-    throw new Error(`缺少 ${COOKIE_FILE}：先跑 node get-cookies.js，或设 EDU_COOKIE="k=v; k=v"`);
-  }
-  return JSON.parse(fs.readFileSync(COOKIE_FILE, 'utf8'));
-}
-
-function cookieHeader() {
-  return Object.entries(cookieMap()).map(([k, v]) => `${k}=${v}`).join('; ');
-}
-
-/**
- * 复刻前端的 X-EDU-Signature：
- *   n   = "method=M&ak=<AK>&sk=<SK>&time=<ms>"
- *   sig = md5( base64(n) )
- * 签名只跟 method 和时间戳有关，跟 URL 无关。
- */
-function signHeaders(method) {
-  const t = Date.now();
-  const n = `method=${String(method).toUpperCase()}&ak=${AK}&sk=${SK}&time=${t}`;
-  const sig = md5(Buffer.from(n, 'utf8').toString('base64'));
-  const jar = cookieMap();
-  return {
-    'X-EDU-Type': 'pc',
-    'X-EDU-Timestamp': String(t),
-    'X-EDU-Signature': sig,
-    'Pc-Authorization': jar['_educoder_session'] || '',
-    'X-Original-Protocol': 'https:',
-    'X-Original-Origin': WWW,
-    'X-Original-Host': 'www.educoder.net',
-    'X-Request-Id': crypto.randomUUID(),
-  };
-}
-
-async function api(p, opts = {}) {
-  const url = p.startsWith('http') ? p : BASE + p;
-  const method = opts.method || (opts.body !== undefined ? 'POST' : 'GET');
-  const headers = {
-    Cookie: cookieHeader(),
-    Accept: 'application/json, text/plain, */*',
-    Referer: WWW + '/',
-    'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36',
-    'X-Requested-With': 'XMLHttpRequest',
-    ...signHeaders(method),
-  };
-  if (opts.body !== undefined) headers['Content-Type'] = 'application/json; charset=utf-8';
-
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`非 JSON 响应 ${res.status}: ${text.slice(0, 200)}`);
-  }
-  if (json.status === -102) {
-    throw new Error('签名被拒（-102）：AK/SK 已过期，按 references/api.md 重新提取');
-  }
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-  return json;
-}
-
-/** /tasks/{course}/{homework_common_id}/{task_slug} */
-function parseTaskUrl(u) {
-  const m = String(u).match(/\/tasks\/([^/?#]+)\/([^/?#]+)\/([^/?#]+)/);
-  if (!m) throw new Error('无法解析任务 URL（形如 https://www.educoder.net/tasks/<course>/<hwid>/<slug>）: ' + u);
-  return { course: m[1], hwid: m[2], slug: m[3] };
-}
-
-/** 题面里的路径偶尔带全角标点，清掉 */
-const cleanPath = (p) => String(p).replace(/[，,；;\s]+$/, '').trim();
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'];
 

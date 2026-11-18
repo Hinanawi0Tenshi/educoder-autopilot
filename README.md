@@ -57,7 +57,11 @@ chrome --remote-debugging-port=9222 --remote-allow-origins=* --user-data-dir=./c
 # 2. 取登录态（之后浏览器可以关掉）
 node scripts/get-cookies.js            # -> cookies.json
 
-# 3. 纯命令行做题
+# 3. 不知道作业链接时，先让脚本自己找
+node scripts/discover.js               # 进行中课程 + 每份作业的完成度，* 标记未完成
+node scripts/discover.js --course 122599 --only-todo   # 只看没做完的，附首关 URL
+
+# 4. 纯命令行做题
 node scripts/eduapi.js list   <任务URL>              # 全部关卡 + 通过状态
 node scripts/eduapi.js walk   <任务URL>              # 下一道未通过的题：正文 + 图片 + 现有框架
 node scripts/eduapi.js submit <任务URL> answer.sql   # 提交代码并拿回 预期/实际 差异
@@ -78,9 +82,12 @@ node scripts/eduapi.js choose <任务URL> BC C         # 提交选择题答案�
 
 | 文件 | 内容 |
 |---|---|
-| `SKILL.md` | 两种模式的取舍 + 主循环八步 + 差异对照表 + 纪律与反模式 |
+| `SKILL.md` | 两种模式的取舍 + 主循环（含"没有链接先 discover"）+ 差异对照表 + 纪律与反模式 |
 | `scripts/eduapi.js` | 接口客户端：`list` / `walk` / `submit` / `choose` / `code` / `task` / `img` |
+| `scripts/discover.js` | 没有链接时找未完成作业：课程 → 作业 → 首关 URL（五步链路） |
+| `scripts/edunet.js` | 底层客户端（cookie + 签名 + 请求），`eduapi` 与 `discover` 共用，AK/SK 只在这维护 |
 | `scripts/get-cookies.js` | 从带调试端口的 Chrome 取 cookie |
+| `references/discover.md` | 五步发现链路、字段表、三个坑（slug 每人不同 / `can_submit=false` 仍可交 / 同课 MySQL 版本不同） |
 | `references/api.md` | 接口清单、签名算法、密钥失效后的重取步骤、字段与限制 |
 | `references/platform.md` | 头歌页面结构、文案表、Monaco 用法、判题语义（实测值，会随改版失效） |
 | `references/pitfalls.md` | 按症状排错，含"平台改版了怎么找回来" |

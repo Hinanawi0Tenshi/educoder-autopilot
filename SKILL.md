@@ -27,12 +27,15 @@ description: 头歌（educoder）实验作业的自动驾驶方法论，含两�
 
 ```bash
 node scripts/get-cookies.js                 # 从带调试端口的 Chrome 取 cookie -> cookies.json
+node scripts/discover.js                    # 没有链接时：列出课程与「哪份作业还没做完」+ 首关 URL
 node scripts/eduapi.js list  <任务URL>       # 全部关卡 + 通过状态
 node scripts/eduapi.js walk  <任务URL>       # 下一道未通过的题：正文 + 图片 + 现有框架
 node scripts/eduapi.js img    <任务URL> <目录> # 下载题面配图
 node scripts/eduapi.js submit <任务URL> <代码文件|->   # 提交代码并拿回 预期/实际 差异
 node scripts/eduapi.js choose <任务URL> <答案1> [答案2 ...] # 提交选择题答案直接判分（如 BC C）
 ```
+
+`discover` 的用法、五步链路（账号 → 课程 → 作业 → 首关 slug）、以及三个坑见 `references/discover.md`。
 
 `walk` 一条命令就把"下一道题该做什么"全给了，顺着 `next_game` 走，不需要点「下一关」。
 接口细节、签名算法、密钥失效后的重取步骤见 `references/api.md`。
@@ -55,6 +58,19 @@ node scripts/eduapi.js choose <任务URL> <答案1> [答案2 ...] # 提交选择
 ---
 
 ## 主循环（每关跑一遍）
+
+### 0. 没有链接？先自己找出来
+
+用户只说"把数据库作业做完"、不给 URL 时，**不要反问他**：
+
+```bash
+node scripts/discover.js --course <课程名或id>   # 每份作业的 完成度/状态/最晚补交时间 + 首关 URL
+```
+
+`*` 标记的是有未完成关卡的作业。`已截止` 的也别急着放弃——`can_submit=false` 实测仍然
+能评测记分，先试一关再判断。链路与坑见 `references/discover.md`。
+
+**判定成功**：拿到形如 `/tasks/<课程码>/<作业ID>/<首关slug>` 的 URL，且 `list` 能跑通。
 
 ### 1. 定位到这一关
 
@@ -162,6 +178,8 @@ node scripts/eduapi.js choose <任务URL> <答案1> [答案2 ...] # 提交选择
 
 ## 参考
 
+- `references/discover.md` — 没有链接时按「账号 → 课程 → 作业 → 首关」五步链路找未完成作业；
+  `can_submit=false` 仍可提交、同一作业每人 slug 不同、同课不同作业 MySQL 版本不同。
 - `references/api.md` — 接口清单、签名算法、密钥失效后的重取、字段与限制。
 - `references/platform.md` — 头歌页面结构、文案表、Monaco 与判题语义的实测值（会随改版失效）。
 - `references/pitfalls.md` — 按症状排错，含"平台改版了怎么找回来"。
