@@ -43,13 +43,36 @@ function cookieHeader() {
 }
 
 /**
+ * 本机时钟与服务器的时间差（毫秒）。沙箱/虚拟机时钟会飘，
+ * 飘超过阈值服务端就返 -102「服务器时间与您的设备时间不匹配」。
+ * 优先用 EDU_TIME_OFFSET_MS，其次用探测到的值。
+ */
+let clockOffset = Number(process.env.EDU_TIME_OFFSET_MS || 0);
+
+function setClockOffset(ms) {
+  clockOffset = Number(ms) || 0;
+}
+
+/** 用响应头 date 估算服务器当前时间，返回 offset = serverNow - localNow */
+async function probeClockOffset() {
+  const res = await fetch(BASE + '/api/setting.json', {
+    headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' },
+  }).catch(() => null);
+  const dh = res && res.headers.get('date');
+  if (!dh) return 0;
+  const server = Date.parse(dh);
+  if (Number.isNaN(server)) return 0;
+  return server - Date.now();
+}
+
+/**
  * 复刻前端的 X-EDU-Signature：
  *   n   = "method=M&ak=<AK>&sk=<SK>&time=<ms>"
  *   sig = md5( base64(n) )
  * 签名只跟 method 和时间戳有关，跟 URL 无关。
  */
 function signHeaders(method) {
-  const t = Date.now();
+  const t = Date.now() + clockOffset;
   const n = `method=${String(method).toUpperCase()}&ak=${AK}&sk=${SK}&time=${t}`;
   const sig = md5(Buffer.from(n, 'utf8').toString('base64'));
   const jar = cookieMap();
@@ -68,33 +91,47 @@ function signHeaders(method) {
 async function api(p, opts = {}) {
   const url = p.startsWith('http') ? p : BASE + p;
   const method = opts.method || (opts.body !== undefined ? 'POST' : 'GET');
-  const headers = {
-    Cookie: cookieHeader(),
-    Accept: 'application/json, text/plain, */*',
-    Referer: WWW + '/',
-    'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36',
-    'X-Requested-With': 'XMLHttpRequest',
-    ...signHeaders(method),
-  };
-  if (opts.body !== undefined) headers['Content-Type'] = 'application/json; charset=utf-8';
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`非 JSON 响应 ${res.status}: ${text.slice(0, 200)}`);
+  const doFetch = async () => {
+    const headers = {
+      Cookie: cookieHeader(),
+      Accept: 'application/json, text/plain, */*',
+      Referer: WWW + '/',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36',
+      'X-Requested-With': 'XMLHttpRequest',
+      ...signHeaders(method),
+    };
+    if (opts.body !== undefined) headers['Content-Type'] = 'application/json; charset=utf-8';
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`非 JSON 响应 ${res.status}: ${text.slice(0, 200)}`);
+    }
+    return { res, json };
+  };
+
+  let { res, json } = await doFetch();
+
+  // -102 = 时间戳与服务器差太多：探一次服务器时间，纠正后重试一次
+  if (json && json.status === -102 && !opts._clockRetried) {
+    const off = await probeClockOffset();
+    if (off) {
+      setClockOffset(off);
+      ({ res, json } = await doFetch());
+    }
   }
   if (json.status === -102) {
-    throw new Error('签名被拒（-102）：AK/SK 已过期，按 references/api.md 重新提取');
+    throw new Error('签名被拒（-102）：本机时钟与服务器偏差过大，已尝试自动校正仍失败，请检查系统时间');
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
   return json;
 }
 
@@ -111,4 +148,5 @@ const cleanPath = (p) => String(p).replace(/[，,；;\s]+$/, '').trim();
 module.exports = {
   BASE, WWW, COOKIE_FILE, AK, SK,
   sleep, md5, cookieMap, cookieHeader, signHeaders, api, parseTaskUrl, cleanPath,
+  setClockOffset, probeClockOffset,
 };
